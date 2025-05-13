@@ -4,87 +4,48 @@ include 'db.php';
 
 if (!isset($_SESSION['cart'])) $_SESSION['cart'] = [];
 
-// Handle form submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['product_id'])) {
-    $product_id = $_POST['product_id'];
+// Handle form submission (POST)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['product_id'], $_POST['quantity'], $_POST['size'])) {
+    $product_id = (int)$_POST['product_id'];
     $quantity = (int)$_POST['quantity'];
+    $size = trim($_POST['size']);
 
-    if ($product_id && $quantity > 0) {
+    if ($product_id && $quantity > 0 && $size !== '') {
         $_SESSION['cart'][] = [
             'product_id' => $product_id,
-            'quantity' => $quantity
+            'quantity' => $quantity,
+            'size' => $size
         ];
     }
     header('Location: order.php');
     exit;
 }
 
-// Handle search
-$search = isset($_GET['search']) ? $_GET['search'] : '';
-$products = $conn->query("SELECT * FROM products WHERE name LIKE '%$search%'");
+// Search handling
+$search = isset($_GET['search']) ? trim($_GET['search']) : '';
+$search_query = $conn->prepare("SELECT * FROM products WHERE name LIKE CONCAT('%', ?, '%')");
+$search_query->bind_param('s', $search);
+$search_query->execute();
+$search_results = $search_query->get_result();
+
+// For dropdown
+$all_products = $conn->query("SELECT * FROM products ORDER BY name ASC");
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>New Order</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    body {
-      background-color:rgb(162, 157, 142);
-      font-family: 'Segoe UI', sans-serif;
-    }
-    .navbar {
-      background-color: #2c3e50;
-    }
-    .navbar .nav-link {
-      color: #fff !important;
-    }
-    .btn-custom {
-      border-radius: 12px;
-      background-color: #f39c12;
-      color: white;
-    }
-    .btn-custom:hover {
-      background-color: #e67e22;
-    }
-    .card, .table, select, input, button {
-      border-radius: 12px;
-    }
-    .product-item {
-      background-color: #ffffff;
-      box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.1);
-      padding: 20px;
-      margin-bottom: 15px;
-      border-radius: 12px;
-    }
-    .product-item .product-name {
-      font-weight: bold;
-      font-size: 1.1rem;
-    }
-    .product-item .product-details {
-      color: #7f8c8d;
-    }
-    .search-results h4 {
-      margin-top: 20px;
-      font-size: 1.3rem;
-      color: #2c3e50;
-    }
-    .table-striped thead {
-      background-color: #f39c12;
-      color: #fff;
-    }
-    .table-striped tbody tr:hover {
-      background-color: #f1c40f;
-    }
-    .footer {
-      text-align: center;
-      margin-top: 50px;
-      font-size: 0.9rem;
-      color: #7f8c8d;
-    }
+    body { background-color: rgb(250, 251, 251); font-family: 'Segoe UI', sans-serif; }
+    .btn-custom { background-color:rgb(71, 106, 145); color: white; border-radius: 12px; }
+    .btn-custom:hover { background-color:rgb(249, 243, 237); }
+    .card, .table, select, input, button { border-radius: 12px; }
+    .product-item { background: #fff; box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.1); padding: 20px; border-radius: 12px; }
+    .footer { text-align: center; margin-top: 50px; font-size: 0.9rem; color: #7f8c8d; }
+    .w-48 { width: 48%; }
   </style>
 </head>
 <body>
@@ -97,68 +58,122 @@ $products = $conn->query("SELECT * FROM products WHERE name LIKE '%$search%'");
     <a href="index.php" class="btn btn-secondary">⬅ Back to Dashboard</a>
   </div>
 
-  <!-- Search bar -->
+  <!-- Search Form -->
   <form class="row mb-4" method="GET">
     <div class="col-md-8">
-      <input type="text" name="search" class="form-control" placeholder="Search product name..." value="<?= htmlspecialchars($search) ?>" style="border-radius: 12px;">
+      <input type="text" name="search" class="form-control" placeholder="Search product name..." value="<?= htmlspecialchars($search) ?>">
     </div>
     <div class="col-md-4">
       <button type="submit" class="btn btn-custom w-100">Search</button>
     </div>
   </form>
 
-  <!-- Search results display -->
+  <!-- Dropdown Select Form -->
+  <form method="POST" class="row mb-4">
+    <div class="col-md-4">
+      <select name="product_id" id="product_id" class="form-select" onchange="this.form.submit()" required>
+        <option value="">-- Select product --</option>
+        <?php
+        $selected_id = $_POST['product_id'] ?? '';
+        mysqli_data_seek($all_products, 0); // reset result pointer
+        while ($product = $all_products->fetch_assoc()):
+        ?>
+          <option value="<?= $product['id'] ?>" <?= $selected_id == $product['id'] ? 'selected' : '' ?>>
+            <?= htmlspecialchars($product['name']) ?> (Stock: <?= $product['stock'] ?>)
+          </option>
+        <?php endwhile; ?>
+      </select>
+    </div>
+
+    <?php
+    $selected_product = null;
+    if ($selected_id) {
+      $selected_product = $conn->query("SELECT * FROM products WHERE id = $selected_id")->fetch_assoc();
+    }
+    ?>
+
+    <?php if ($selected_product): ?>
+    <div class="col-md-2">
+      <select name="size" class="form-select" required>
+        <option value="">-- Size --</option>
+        <?php foreach (explode(',', $selected_product['size']) as $sz): ?>
+          <option value="<?= trim($sz) ?>"><?= trim($sz) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <input type="number" name="quantity" class="form-control" min="1" placeholder="Qty" required>
+    </div>
+    <div class="col-md-2">
+      <button type="submit" class="btn btn-custom w-100">Add</button>
+    </div>
+    <?php endif; ?>
+  </form>
+
+  <!-- Search Results -->
   <?php if ($search): ?>
-  <div class="search-results">
-    <h4>Search Results for "<?= htmlspecialchars($search) ?>"</h4>
-    <?php if ($products->num_rows > 0): ?>
-      <div class="row">
-        <?php while ($row = $products->fetch_assoc()): ?>
-          <div class="col-md-4 mb-3">
-            <div class="product-item">
-              <p class="product-name"><?= $row['name'] ?></p>
-              <p class="product-details">Stock: <?= $row['stock'] ?> items</p>
+    <h5>🔍 Results for "<?= htmlspecialchars($search) ?>"</h5>
+    <?php if ($search_results->num_rows > 0): ?>
+      <div class="row mb-4">
+        <?php while ($row = $search_results->fetch_assoc()): ?>
+          <div class="col-md-4">
+            <div class="product-item mb-3">
+              <p class="fw-bold"><?= htmlspecialchars($row['name']) ?></p>
+              <p class="text-muted">Stock: <?= $row['stock'] ?> items</p>
               <form method="POST">
                 <input type="hidden" name="product_id" value="<?= $row['id'] ?>">
-                <input type="number" name="quantity" class="form-control" min="1" max="<?= $row['stock'] ?>" required placeholder="Qty" style="border-radius: 12px;">
-                <button type="submit" class="btn btn-custom mt-2 w-100">Add to Cart</button>
+                <select name="size" class="form-select mb-2" required>
+                  <option value="">-- Size --</option>
+                  <?php foreach (explode(',', $row['size']) as $sz): ?>
+                    <option value="<?= trim($sz) ?>"><?= trim($sz) ?></option>
+                  <?php endforeach; ?>
+                </select>
+                <input type="number" name="quantity" class="form-control mb-2" min="1" max="<?= $row['stock'] ?>" placeholder="Qty" required>
+                <button type="submit" class="btn btn-custom w-100">Add to Cart</button>
               </form>
             </div>
           </div>
         <?php endwhile; ?>
       </div>
     <?php else: ?>
-      <p>No products found for your search.</p>
+      <p>No products found.</p>
     <?php endif; ?>
-  </div>
   <?php endif; ?>
 
-  <!-- Cart preview -->
+  <!-- Cart Preview -->
   <h4 class="mt-5">🧾 Current Cart</h4>
-  <table class="table table-striped table-bordered">
-    <thead>
-      <tr>
-        <th>Product</th>
-        <th>Qty</th>
-      </tr>
-    </thead>
-    <tbody>
-      <?php
-      foreach ($_SESSION['cart'] as $item) {
-        $product = $conn->query("SELECT name FROM products WHERE id = {$item['product_id']}")->fetch_assoc();
-        echo "<tr><td>{$product['name']}</td><td>{$item['quantity']}</td></tr>";
-      }
-      ?>
-    </tbody>
-  </table>
+  <?php if (!empty($_SESSION['cart'])): ?>
+    <table class="table table-striped table-bordered">
+      <thead class="table-warning">
+        <tr>
+          <th>Product</th>
+          <th>Size</th>
+          <th>Quantity</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php foreach ($_SESSION['cart'] as $item): ?>
+          <?php
+            $product = $conn->query("SELECT name FROM products WHERE id = {$item['product_id']}")->fetch_assoc();
+            if ($product):
+          ?>
+            <tr>
+              <td><?= htmlspecialchars($product['name']) ?></td>
+              <td><?= htmlspecialchars($item['size']) ?></td>
+              <td><?= $item['quantity'] ?></td>
+            </tr>
+          <?php endif; ?>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
 
-
-<div class="d-flex justify-content-between">
-    <a href="invoice_preview.php" class="btn btn-warning btn-lg text-white w-48" style="border-radius: 15px; padding: 12px 20px; background-color: #f39c12; border: none; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);">Preview Invoice</a>
-    <a href="clear_cart.php" class="btn btn-danger btn-lg text-white w-48" style="border-radius: 15px; padding: 12px 20px; background-color: #e74c3c; border: none; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);">Cancel Order</a>
-</div>
-
-  </div>
+    <div class="d-flex justify-content-between">
+      <a href="invoice_preview.php" class="btn btn-warning btn-lg text-white w-48">Preview Invoice</a>
+      <a href="clear_cart.php" class="btn btn-danger btn-lg text-white w-48">Cancel Order</a>
+    </div>
+  <?php else: ?>
+    <p>No items in cart yet.</p>
+  <?php endif; ?>
 </div>
 
 <!-- Footer -->

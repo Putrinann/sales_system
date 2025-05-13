@@ -1,5 +1,5 @@
 <!-- navbar.php -->
-<nav class="navbar navbar-expand-lg navbar-dark" style="background-color: #5e503f;">
+<nav class="navbar navbar-expand-lg navbar-dark" style="background-color:rgb(7, 7, 41);">
   <div class="container-fluid">
     <a class="navbar-brand" href="index.php">👟 Shoe Revenue</a>
     <div class="navbar-nav">
