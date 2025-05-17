@@ -130,7 +130,8 @@ $all_products = $conn->query("SELECT * FROM products ORDER BY name ASC");
         while ($product = $all_products->fetch_assoc()):
         ?>
                     <option value="<?= $product['id'] ?>" <?= $selected_id == $product['id'] ? 'selected' : '' ?>>
-                        <?= htmlspecialchars($product['name']) ?> (Stock: <?= $product['stock'] ?>)
+                        <?= htmlspecialchars($product['name']) ?> <?= $product['size'] ?> (Stock:
+                        <?= $product['stock'] ?>)
                     </option>
                     <?php endwhile; ?>
                 </select>
@@ -211,7 +212,7 @@ $all_products = $conn->query("SELECT * FROM products ORDER BY name ASC");
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($_SESSION['cart'] as $item): ?>
+                <?php foreach (array_reverse($_SESSION['cart']) as $item): ?>
                 <?php $product = $conn->query("SELECT name FROM products WHERE id = {$item['product_id']}")->fetch_assoc(); ?>
                 <?php if ($product): ?>
                 <tr>
